@@ -1,122 +1,74 @@
-<!-- ================================================================
-     Atmospheric-Pressure Streamer Solver – README
-     ================================================================
+# 大气压流光（Streamer）多物理量数值模拟器  
+**——“本对话版本” README**
 
-     Copy / rename this file to  `README.md`  in the root of the repo.
-     Markdown is GitHub-flavoured (GFM) and renders correctly on GitHub,
-     GitLab, Bitbucket, VS Code and most static-site generators.
-     ----------------------------------------------------------------
--->
-
-<h1 align="center">Atmospheric-Pressure Streamer Solver</h1>
-<p align="center">
-  <em>A GPU-accelerated multi-physics code for nanosecond streamer discharges<br>
-  in humid air (N<sub>2</sub>/O<sub>2</sub>/H<sub>2</sub>O mixtures)</em>
-</p>
-
-<p align="center">
-  <!-- update these badges for your repo/CI provider -->
-  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
-  <img alt="Top language"  src="https://img.shields.io/github/languages/top/YOUR-USER/streamer-solver.svg">
-  <img alt="GitHub CI"      src="https://img.shields.io/github/actions/workflow/status/YOUR-USER/streamer-solver/ci.yml?branch=main">
-</p>
+> **说明**  
+> 下面的说明完全基于您在对话中提供的 _单一源文件_（近 4 k 行 C++/CUDA/OpenMP 代码）及其依赖的若干 _ASCII 数据文件_。  
+> 若您随后对源码目录结构、文件名或编译选项做了改动，请同步更新本 README 中相应部分。
 
 ---
 
-## ✨ Key capabilities
-
-| Module | Highlights |
-|--------|------------|
-| **Fluid plasma model** | 2-D axisymmetric, 1-T, ⬆️ 20 charged species & 22 vibrational levels |
-| **Chemistry** | 180 + reactions (electron impact, ion–ion, ion–neutral, neutral–neutral)<br>4th-order RK (adaptive) |
-| **Electric field** | Multigrid Poisson solver with red–black SOR on **CUDA** (sm ≥ 5.0) |
-| **Advection / diffusion** | MUSCL-TVD (super-bee limiter) + explicit diffusion (OpenMP / C++ threads) |
-| **Photo-ionisation** | Helmholtz approximation with three-term absorption kernel |
-| **User I/O** | Flexible voltage waveform spline, VTK/CSV/HDF5 output, runtime checkpointing |
-| **Performance** | 10–40× faster than baseline Fortran build on RTX 3080 (8 M cells / 30 ns) |
-
-<p align="center"><img width="650" src="docs/demo.gif" alt="Streamer evolution demo"></p>
+## 目录
+1. [功能概览](#功能概览)
+2. [源代码与数据文件结构](#源代码与数据文件结构)
+3. [依赖环境](#依赖环境)
+4. [编译](#编译)
+5. [输入文件组织](#输入文件组织)
+6. [运行](#运行)
+7. [典型输出](#典型输出)
+8. [常见问题](#常见问题)
+9. [许可证](#许可证)
 
 ---
 
-## 🗂️ Repository layout
-
-├── cmake/ # CMake helpers
-├── include/ # public headers (vec.h, spline.h, ...)
-├── src/ # C++ / CUDA source files
-│ ├── chemistry/ # reaction integrators
-│ ├── field/ # Poisson + multigrid kernels
-│ └── fluid/ # gas-dynamic solver
-├── inputdata/ # ✓ example meshes, reaction tables, voltage waveform
-├── docs/ # build + usage guides, figures, publications
-├── tests/ # unit tests & CI regression cases
-├── examples/ # ready-to-run example configurations
-├── .github/workflows/ # CI definitions (build / clang-tidy / unit tests)
-├── CMakeLists.txt # build script (GNU/Clang/MSVC/NVIDIA/PGI)
-└── README.md # this file
-
+## 功能概览
+| 模块 | 说明 |
+| ---- | ---- |
+| **流体动力学** | 轴对称 2-D，可选 OpenMP 并行（`THREAD_NUM`＝64） |
+| **等离子体化学** | 电子、正、负离子及振动态共 100 + 粒子；电子碰撞/离子-中性/中性-中性反应≥180 条；RK4 自适应步长 |
+| **电场求解** | CUDA-GPU 多重网格 + Red-Black SOR；三层递归（NR×NZ→½→¼） |
+| **对流 & 扩散** | MUSCL-SuperBee 高分辨率格式 + 显式扩散 |
+| **光电离** | 三项 Helmholtz 近似 |
+| **耦合** | 单时间步统一推进：Poisson → 场 → 速度 → 对流/扩散 → 化学 |
 
 ---
 
-## 🚀 Quick start
+## 源代码与数据文件结构
+project-root/
+├── streamer_solver.cu # 您粘贴的主程序（含 C/C++/CUDA/OpenMP）
+├── include/ # vec(), mat(), spline() 等头文件（需自行提供）
+├── inputdata/
+│ ├── Initial/initial_N2_80p_300K.dat
+│ ├── Bolsig_Data/O2_20p.dat
+│ ├── i_reaction_300K_modmod0516.dat
+│ ├── e_reaction_mod1803.dat
+│ ├── n_reaction_modmod.dat
+│ ├── mesh_r2_0624.dat
+│ ├── mesh_z2.dat
+│ └── V_Ono_single_str.dat
+└── outputdata/ # 运行时自动生成> **提示**  
+> 如果您还未拆分头文件或工具函数，请先把 `memory.h / spline.h / mesh_generator.h …` 与其 `.cpp`/`.cu` 实现放到 `include/` 或 `src/` 目录中，再按下文的 **CMake** 或 **Makefile** 方式编译。
 
-<details>
-<summary>Prerequisites (tested configurations)</summary>
+---
 
-| Dependency | Recommended | Notes |
-|------------|-------------|-------|
-| **CUDA Toolkit** | ≥ 11.4 | code uses cooperative groups & `__shfl_sync` |
-| **C++ compiler** | GCC ≥10 · Clang ≥12 · MSVC 2019 | must support C++17 |
-| **CMake** | ≥ 3.18 | presets available |
-| **GPU** | Compute capability ≥ 5.0, ≥ 4 GB VRAM | Pascal, Volta, Turing, Ampere, Ada OK |
-| **CPU** | Any modern x86-64 | OpenMP 4.5 runtime optional |
-| **Linux / WSL 2** | Ubuntu 20.04 LTS+ | Windows & macOS (CUDA on eGPU) experimental |
-</details>
+## 依赖环境
+| 组件 | 建议版本 | 说明 |
+| ---- | -------- | ---- |
+| **CUDA Toolkit** | ≥ 11.4 | 代码调用 `cudaMalloc`, `dim3`, 需要 GPU (SM 5.0+) |
+| **C/C++ 编译器** | GCC 10+ / Clang 12+ / MSVC 2019 | 必须支持 C++17 |
+| **Make 或 CMake** | (二选一) | 本 README 同时给出两种脚本 |
+| **OpenMP 运行时** | 可选 | 如果想启用 `THREAD_NUM`≥2 |
+| **操作系统** | Linux x86-64/WSL2 | Windows+CUDA 亦可（实验性） |
 
+---
+
+## 编译
+
+### 1. 直接使用 `nvcc + g++`
+> 适合“先跑起来”：
 ```bash
-# Clone
-git clone https://github.com/YOUR-USER/streamer-solver.git
-cd streamer-solver
-
-# Configure + build (Release)
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build -j$(nproc)
-
-build/solver                               \
-  --mesh-r       inputdata/mesh_r2_0624.dat \
-  --mesh-z       inputdata/mesh_z2.dat      \
-  --initial      inputdata/Initial/initial_N2_80p_300K.dat \
-  --voltage      inputdata/V_Ono_single_str.dat \
-  --t-stop       8e-9                       \
-  --output       outputdata/run-0001
-
-outputdata/run-0001/
- ├── φ_0008000.vti          # electric potential (ParaView)
- ├── n_electron_0008000.vti # species densities, power deposition, …
- ├── discharge.log          # human-readable summary
- └── chkpt_0008000.h5       # restart checkpoint (HDF5)
-
- ┌──────────────────────────────────────────────────────────┐
- │                          main()                         │
- └──────────────────────────────────────────────────────────┘
-              │
-              ▼
-   ┌─────────────────────┐      Init meshes, load reactions,
-   │ initial_condition() │◄──── constants, allocate buffers
-   └─────────────────────┘
-              │
-              ▼
-   ┌─────────────────────┐
-   │   time-loop (ns)    │   nstp = 0 … N
-   └─────────────────────┘
-        │  │     ▲  ▲
-        │  │     │  │ RK4 chemistry (CPU / OpenMP)
-        │  │     │  └─────────┐
-        │  │     │            │ diffusion   (CPU)
-        │  │     └────────────┤ advection   (CPU threads)
-        │  │                  │ e/ion vel.  (CPU)
-        │  └─►  Poisson-MG-SOR│ field solve (GPU, CUDA)
-        │                     └──> Ex,Ey,φ,|E|
-        ▼
-  write VTK / progress bar … (I/O thread)
+# 在项目根目录执行
+nvcc -O3 -std=c++17 -Xcompiler "-fopenmp"               \
+     -I./include                                        \
+     -o streamer_solver                                 \
+     streamer_solver.cu
 
