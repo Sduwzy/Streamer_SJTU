@@ -1,17 +1,5 @@
 # 大气压流光（Streamer）多物理量数值模拟器  
 
-## 目录
-1. [功能概览](#功能概览)
-2. [源代码与数据文件结构](#源代码与数据文件结构)
-3. [依赖环境](#依赖环境)
-4. [编译](#编译)
-5. [输入文件组织](#输入文件组织)
-6. [运行](#运行)
-7. [典型输出](#典型输出)
-8. [常见问题](#常见问题)
-9. [许可证](#许可证)
-
----
 
 ## 功能概览
 | 模块 | 说明 |
@@ -23,7 +11,6 @@
 | **光电离** | 三项 Helmholtz 近似 |
 | **耦合** | 单时间步统一推进：Poisson → 场 → 速度 → 对流/扩散 → 化学 |
 
----
 
 ## 源代码与数据文件结构
 project-root/
@@ -39,7 +26,7 @@ project-root/
 │ ├── mesh_z2.dat
 │ └── V_Ono_single_str.dat
 └── outputdata/ # 运行时自动生成> **提示**  
-> 如果您还未拆分头文件或工具函数，请先把 `memory.h / spline.h / mesh_generator.h …` 与其 `.cpp`/`.cu` 实现放到 `include/` 或 `src/` 目录中，再按下文的 **CMake** 或 **Makefile** 方式编译。
+
 
 ---
 
@@ -53,15 +40,3 @@ project-root/
 | **操作系统** | Linux x86-64/WSL2 | Windows+CUDA 亦可（实验性） |
 
 ---
-
-## 编译
-
-### 1. 直接使用 `nvcc + g++`
-> 适合“先跑起来”：
-```bash
-# 在项目根目录执行
-nvcc -O3 -std=c++17 -Xcompiler "-fopenmp"               \
-     -I./include                                        \
-     -o streamer_solver                                 \
-     streamer_solver.cu
-
